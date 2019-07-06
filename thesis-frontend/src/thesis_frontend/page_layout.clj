@@ -10,46 +10,30 @@
   (html5
     [:head
      [:title "Bipolar Prediction Service"]]
-    (include-css "/css/home.css")
+    (include-css "/css/home-layout.css")
     [:body body]))
 
-(defn custom-input [type name label placeholder]
-  [:div
-   [:label label
-    [:input {:type type :name name :placeholder placeholder}]]])
+;(defn custom-input [type name label placeholder]
+;  [:div
+;   [:label label
+;    [:input {:type type :name name :placeholder placeholder}]]])
 
-(defn registeration-form []
-  [:div
-   [:h1 "Upload NII data here."]
-   
-   
-   
-   #_(form-to [:post "/"]
-            (file-upload "NII")
-            (custom-input "text" "first-name" "First name" "First name")
-            (custom-input "text" "last-name" "Last name" "Last name")
-            (custom-input "text" "email" "Email" "Your email")
-            (submit-button "Submit"))
-   
-   
-   [:form {:action "/file" :method "post" :enctype "multipart/form-data"}
-    [:input {:name "file" :type "file" :size "20"}]
-    [:input {:type "submit" :name "submit" :value "submit"}]]
-    
-   [:form {:action "/predict" :method "get"}
-    [:input {:type "submit" :name "predict" :value "predict"}]]
-  
-  ])
+(defn upload-form []
+  [:div#text-box
+   [:h1 "Bipolar Prediction Service"]
+   [:h2 "Upload NII file"]
+   [:div
+    [:form {:action "/file" :method "post" :enctype "multipart/form-data"}
+     [:input#file {:name "file" :type "file" :size "20"}]
+     [:input#submit {:type "submit" :name "submit" :value "submit"}]]]])
 
   
 
-(defn result [form-params]
-  [:div
-   [:h1 "Form data sent to the server"]
-   [:div form-params ]
-   
-   #_(for [[field-name field-value] form-params]
-     (do (print field-name)
-      
-      
-      ))])
+;(defn result [form-params]
+;  [:div 
+;   [:h1 "Form data sent to the server"]
+;   ;[:div form-params ]
+;   [:ul
+;    (for [{:strs [filename class-label class-probability]} form-params]
+;      [:li [:li "Filename: " filename] [:li "Class Label: " class-label] [:li "Class Probability: " class-probability]]
+;      )]])

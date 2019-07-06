@@ -1,0 +1,23 @@
+body {
+    background-color: darkslategrey;
+    color: azure;
+    font-size: 1.1em;
+}
+
+h1 {
+    position: relative;
+    color: antiquewhite;
+    font-family: AppleGothic, Arial;
+}
+
+h2 {
+    position: relative;
+    color: antiquewhite;
+    font-family: AppleGothic, Arial; 
+}
+
+#text-box {
+
+    margin-top:15%;
+    margin-left:35%
+}
