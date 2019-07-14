@@ -5,11 +5,14 @@
             [langohr.queue :as lq]
             [ring.adapter.jetty :refer [run-jetty]]
             [thesis-frontend.handler :as handler]))
-   
-(defn json-comm [channel]
+
+(defn predictor-message-queue 
+  "Setup the channel queue for the nii predictor."
+  [channel]
+  
   (do
-    (lq/declare channel "jsonpy2clj" {:exclusive false :auto-delete false})
-    (lq/declare channel "jsonclj2py" {:exclusive false :auto-delete false})
+    (lq/declare channel "py->clj" {:exclusive false :auto-delete false})
+    (lq/declare channel "clj->py" {:exclusive false :auto-delete false})
     (println (format "Clojure Connected. Channel id: %d" (.getChannelNumber channel)))))
 
 (defn shutdown [channel connection]
@@ -22,6 +25,6 @@
   [& args]
   (let [conn (rmq/connect {:uri handler/amqp-url})
         ch (lch/open conn)]
-    (json-comm ch)
+    (predictor-message-queue ch)
     (run-jetty handler/app {:port (Integer/valueOf (or (System/getenv "port") "3006")) :join true})
     (shutdown ch conn)))

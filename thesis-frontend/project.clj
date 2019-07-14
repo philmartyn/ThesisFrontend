@@ -1,5 +1,5 @@
 (defproject thesis-frontend "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
+  :description "Web client and server for NII predictor."
   :url "http://example.com/FIXME"
   :min-lein-version "2.0.0"
   :dependencies [[org.clojure/clojure "1.10.0"]
@@ -10,6 +10,8 @@
                  [org.clojure/data.json "0.2.6"]
                  [ring/ring-jetty-adapter "1.6.3"]
                  [ring/ring-json "0.4.0"]
+                 [clj-pdf "2.3.5"]
+                 [byte-streams "0.2.4"]
                  [com.novemberain/langohr "5.1.0"]
                  [ring/ring-defaults "0.3.2"]]
   :plugins [[lein-ring "0.12.5"]

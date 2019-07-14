@@ -1,5 +1,5 @@
 (ns thesis-frontend.handler
- (:gen-class)
+  (:gen-class)
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [compojure.core :refer :all]
@@ -10,30 +10,34 @@
             [ring.middleware.defaults :refer [wrap-defaults api-defaults]]
             [ring.middleware.multipart-params :refer [wrap-multipart-params]]
             [ring.middleware.resource :refer [wrap-resource]]
-            [thesis-frontend.page-layout :as layout])) 
+            [thesis-frontend.page-layout :refer [main-page]]
+            [thesis-frontend.pdf :as pdf])) 
 
 
-(defn format-file-string
-"Formats the JSON to a more readble and writeable to file format."
-  [response]
-  (reduce (fn [acc {:strs [filename class-label class-probability]}]
-            (str acc "\nFilename: " filename "\nCLass-Label: " class-label "\nClass-Probability: " class-probability "\n"))
-          ""
-          response))
+(def amqp-url (or (System/getenv "AMQP_URL") 
+                  "amqp://guest:guest@localhost:5672"))
 
-(def amqp-url (get (System/getenv) "CLOUDAMQP_URL" "amqp://guest:guest@localhost:5672"))
-
-(defn jsonstring 
+(defn to-json-string 
   [filename] 
   (json/write-str {:filename filename}))
-
-(defn main-page []
-  (layout/common (layout/upload-form)))
 
 (defn read-bytes->json
   "Converts a byte array to String to JSON"
   [^bytes response-data]
-  (json/read-str (String. response-data "UTF-8")))
+  (when response-data 
+    (json/read-str (String. response-data "UTF-8"))))
+
+(defn sleep-thread 
+  []
+  (Thread/sleep 20000))
+
+(defn publish-and-get-response
+  "Put filename onto queue and get the response back."
+  [ch filename]
+  
+  (lb/publish ch "" "clj->py" (to-json-string filename) {:content-type "application/json"})
+  (sleep-thread)
+  (lb/get ch "py->clj"))
 
 (defroutes app-routes
            (GET "/" [] (main-page))
@@ -46,17 +50,16 @@
 
                (io/copy tempfile (io/file "resources" "public" filename))
 
-               (lb/publish ch "" "jsonclj2py" (jsonstring filename) {:content-type "application/json"})
-               (Thread/sleep 20000)
-               (let [[_metadata response-data] (lb/get ch "jsonpy2clj")
-                     response-data-json (read-bytes->json response-data)]
-                 (prn "Response Data " response-data-json)
+               (let [[_metadata response-data] (publish-and-get-response ch filename)
+                     ;response-data-json (read-bytes->json response-data)
+                      ]
+                 ;(prn "Response Data " response-data-json)
                  (rmq/close ch)
                  (rmq/close conn)
-
-                 {:status 200
-                  :headers {}
-                  :body (format-file-string response-data-json)})))
+                 
+                 (if response-data
+                   (pdf/pdf-response response-data)
+                   (main-page)))))
             
            (route/resources "/")
            (route/not-found "Not Found"))
@@ -64,8 +67,8 @@
 
 (def app
   (let [config (-> api-defaults
-                          (assoc-in [:security :anti-forgery] false)
-                          (assoc-in [:params :multipart] true))]
+                   (assoc-in [:security :anti-forgery] false)
+                   (assoc-in [:params :multipart] true))]
     (-> app-routes
         (wrap-defaults config)
         (wrap-resource "public"))))
