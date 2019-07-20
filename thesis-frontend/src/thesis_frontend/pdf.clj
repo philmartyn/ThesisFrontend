@@ -13,22 +13,24 @@
                     Looks like:
                     [{\"filename\" \"1.jpg\" \"class-label\" \"bipolar\" \"class-probability\" \"100.00\"}... <multiple maps>]
   
-  Returns <out>.                  
-  "
+  Returns <out>."
   [out response-data]
+  
   (let [value-or-empty-string (fn [value]
                                 (if-not value
                                   ""
                                   (str value)))
                                   
-        create-pdf-table-elements (reduce (fn [acc {:strs [filename class-label class-probability]}]
-                                            (conj acc [["File Slice:" "" [:cell {:align :right} (value-or-empty-string filename)]]
-                                                       ["Class: " "" [:cell {:align :right} (value-or-empty-string class-label)]]
-                                                       ["Probability: " [:cell {:align :right :colspan 2} (value-or-empty-string class-probability)]]
-                                                       [[:cell {:colspan 3 :align :center} "--------------------------------"]]]))
-                                          []
-                                          response-data)]
-   (pdf/pdf
+        ;; Create the individual result tables rows.
+        create-pdf-table-elements (reduce 
+                                    (fn [acc {:strs [filename class-label class-probability]}]
+                                      (conj acc [["File Slice:" "" [:cell {:align :right} (value-or-empty-string filename)]]
+                                                 ["Class: " "" [:cell {:align :right} (value-or-empty-string class-label)]]
+                                                 ["Probability: " [:cell {:align :right :colspan 2} (format "%.7s" (value-or-empty-string class-probability))]]
+                                                 [[:cell {:colspan 3 :align :center} "--------------------------------"]]]))
+                                    []
+                                    response-data)]
+    (pdf/pdf
      [{}
       (concat
         [:table {:header ["" [:cell {:size 15 :align :center} "Results"] ""] :align :center :width 50 :border false :cell-border false :spacing -3}]
@@ -36,18 +38,22 @@
                (concat create-pdf-table-elements)))]
      out)))
      
+     
 (defn write-response
   "Creates the Ring response for the PDF."
   [result-bytes]
+  
   (with-open [in (ByteArrayInputStream. result-bytes)]
     (-> (resp/response in)
         (resp/header "Content-Disposition" "filename=data-response.pdf")
         (resp/header "Content-Length" (count result-bytes))
         (resp/content-type "application/pdf"))))
 
+
 (defn pdf-response
   "Creates the PDF results page sent back to the client."
   [response-data]
+  
   (try
     (let [out (ByteArrayOutputStream.)]
       (generate-response out response-data)

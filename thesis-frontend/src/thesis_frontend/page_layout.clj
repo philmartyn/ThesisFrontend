@@ -22,5 +22,6 @@
      [:input#submit {:type "submit" :name "submit" :value "submit"}]]]])
 
 (defn main-page 
+  "Creates the main page of the app."
   []
   (header (upload-form)))

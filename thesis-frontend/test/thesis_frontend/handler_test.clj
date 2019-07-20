@@ -2,8 +2,6 @@
   (:require [clojure.test :refer :all]
             [ring.mock.request :as mock]
             [thesis-frontend.handler :refer :all]
-            [langohr.core :as rmq]
-            [langohr.channel :as lch]
             [byte-streams :as bs]
             [clojure.java.io :as io]))
 
@@ -21,13 +19,9 @@
       (is (= (:body response) main-page-response))))
 
   (testing "post"
-    (let [input (str->byte-array "[{\"filename\" \"1.jpg\" \"class-label\" \"bipolar\" \"class-probability\" \"100.00\"}]")]
+    (let [response-from-queue (str->byte-array "[{\"filename\" \"1.jpg\" \"class-label\" \"bipolar\" \"class-probability\" \"100.00\"}]")]
       ;; Mock out the queuing section
-      (with-redefs [rmq/connect (constantly "connection")
-                    lch/open (constantly "channel")
-                    publish-and-get-response (constantly ["metadata" input])
-                    rmq/close (constantly "channel")
-                    rmq/close (constantly "connection")
+      (with-redefs [publish-and-get-response (constantly ["metadata" response-from-queue])
                     io/file (constantly nil)
                     io/copy (constantly "")
                     sleep-thread (constantly 2000)]
