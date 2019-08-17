@@ -1,0 +1,31 @@
+version: '2'
+
+networks:
+  app-tier:
+    driver: bridge
+
+services:
+  rabbitmq:
+
+    image: 'bitnami/rabbitmq:latest'
+    networks:
+      - app-tier
+  frontend:
+    image: 'thesis/frontend'
+    ports:
+      - "3006:3006"
+    environment:
+      - AMQP_URL=amqp://user:bitnami@rabbitmq:5672
+    networks:
+      - app-tier
+  backend:
+    image: 'thesis/backend'
+    ports:
+      - "5672:5672"
+    environment:
+      - AMQP_HOST=rabbitmq
+      - NII_FILE_PATH=/Backend/tmp/
+      - MODEL_PATH=/Backend/src/predictor/static/bottleneck_model.h5
+      - PYTHONPATH=/Backend/
+    networks:
+      - app-tier

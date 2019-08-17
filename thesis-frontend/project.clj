@@ -1,7 +1,8 @@
-(defproject thesis-frontend "0.1.0-SNAPSHOT"
+(defproject thesis-frontend "0.1.0"
   :description "Web client and server for NII predictor."
   :url "http://example.com/FIXME"
   :min-lein-version "2.0.0"
+  :source-paths ["src"]
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [compojure "1.6.1"]
                  [hiccup "1.0.5"]
@@ -13,13 +14,17 @@
                  [clj-pdf "2.3.5"]
                  [byte-streams "0.2.4"]
                  [com.novemberain/langohr "5.1.0"]
+                 [com.velisco/clj-ftp "0.3.12"]
                  [ring/ring-defaults "0.3.2"]]
   :plugins [[lein-ring "0.12.5"]
             [compojure "1.6.1"]]
-  :main ^:skip-aot thesis-frontend.core 
+  :main thesis-frontend.core 
+  :aot [thesis-frontend.core
+        thesis-frontend.handler
+        thesis-frontend.message-broker
+        thesis-frontend.pdf
+        thesis-frontend.page-layout]
   :ring {:handler thesis-frontend.handler/app
-         :init thesis-frontend.handler/init
-         :destroy thesis-frontend.handler/destroy
          :auto-refresh? true
          :nrepl {:start? true}}
   :profiles

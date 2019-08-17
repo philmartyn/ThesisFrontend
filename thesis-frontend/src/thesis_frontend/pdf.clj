@@ -4,7 +4,7 @@
   (:import (java.io ByteArrayInputStream ByteArrayOutputStream)))
 
 
-(defn generate-response 
+(defn generate-pdf-response 
   "Create the PDF to return to be sent to the web client. Creates a table layout for each of the images results
   returned from the predictor backend
   
@@ -39,7 +39,7 @@
      out)))
      
      
-(defn write-response
+(defn write-pdf-response
   "Creates the Ring response for the PDF."
   [result-bytes]
   
@@ -56,8 +56,8 @@
   
   (try
     (let [out (ByteArrayOutputStream.)]
-      (generate-response out response-data)
-      (write-response (.toByteArray out)))
+      (generate-pdf-response out response-data)
+      (write-pdf-response (.toByteArray out)))
     (catch Exception ex
       (prn {:error (.getMessage ex)}))))
       

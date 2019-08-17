@@ -8,16 +8,18 @@
 
 (defn shutdown 
   "Shutdown the server, queue connection and channel."
-  [channel connection]
+  []
 
-  (Thread/sleep 5000) ;; wait for messages to finish.
-  (println "Clojure Disconnecting...")
-  (rmq/close channel)
-  (rmq/close connection))
+  (Thread/sleep 5000)
+  (println "Server disconnecting...")
+  (rmq/close mb/channel-persist)
+  (rmq/close mb/connection-persist))
 
 (defn -main
   [& args]
-  
-    (mb/predictor-message-queue)
-    (run-jetty handler/app {:port (Integer/valueOf (or (System/getenv "NII_PORT") "3006")) :async? true  :join true})
-    (shutdown mb/channel mb/conn))
+  (let [port (Integer/valueOf (or (System/getenv "NII_PORT") "3006"))]
+   (println "Connecting to port: " port)
+   (mb/predictor-message-queue)
+   (println "Connection and channel established.")
+   (run-jetty handler/app {:port port :join false :async? true :async-timeout 60000})
+   (shutdown)))

@@ -1,68 +1,149 @@
 (ns thesis-frontend.handler
-  (:gen-class)
-  (:require [clojure.data.json :as json]
-            [clojure.java.io :as io]
-            [compojure.core :refer :all]
+  (:require [compojure.core :refer :all]
             [compojure.route :as route]
-            [clojure.tools.logging :only [info]]
             [langohr.basic :as lb]
-            [clojure.data.json :only [json-str]]
+            [clojure.data.json :refer [read-str
+                                       write-str]]
             [ring.middleware.defaults :refer [wrap-defaults api-defaults]]
             [ring.middleware.multipart-params :refer [wrap-multipart-params]]
             [ring.middleware.resource :refer [wrap-resource]]
             [thesis-frontend.page-layout :refer [main-page]]
             [thesis-frontend.message-broker :as mb]
-            [thesis-frontend.pdf :as pdf])) 
+            [thesis-frontend.pdf :as pdf]
+            [clojure.java.io :as io])
+  (:import (java.util UUID))) 
 
 
 (defn to-json-string 
-  [filename] 
-  (json/write-str {:filename filename}))
+  [filename]
+  (write-str {:filename filename}))
 
 
 (defn read-bytes->json
   "Converts a byte array to String to JSON"
   [^bytes response-data] 
   (when response-data 
-    (json/read-str (String. response-data "UTF-8"))))
+    (read-str (String. response-data "UTF-8"))))
 
 
-;; Mostly here so I can redef for testing.
-(defn sleep-thread 
-  []
-  (Thread/sleep 15000))
+(defn uuid 
+[]
+  (.toString (UUID/randomUUID)))
 
 
-(defn publish-and-get-response
-  "Put filename onto queue and get the response back."
-  [ch filename]
-  
-  ;; Put the filename on the message queue to be sent to the predictor
-  (lb/publish ch "" "clj->py" (to-json-string filename) {:content-type "application/json"})
-  ;; Sleep the thread until the predictor has finished, better to do this properly with an async handler
-  (sleep-thread)
-  ;; Get the results off the queue. Could use async subscribe function here. Get is simpler though.  
-  (lb/get ch "py->clj"))
+;; This is for ease of testing.
+(defn ack 
+  [channel delivery-tag]
+  (lb/ack channel delivery-tag))
+
+
+(defn nack 
+  [channel delivery-tag]
+  (lb/nack channel delivery-tag false true))
+
+
+(defn timeout? [attempt]
+  (> attempt 60))
+
+
+(defn send-and-receive-rpc
+  [filename request-correlation-id]
+  (println (.getName (Thread/currentThread)))
+  (let [_ (println "Correlation ID" request-correlation-id)
+        
+        channel @mb/channel-persist
+        _ (println "Channel " channel)
+       
+        callback-queue @mb/callback-queue-persist
+        _ (println "Callback Queue " callback-queue)
+       
+        queue-name (get callback-queue :queue)
+        _ (println "Queue name " queue-name)
+       
+        _ (try 
+            (lb/publish channel "" "clj->py" (to-json-string filename) {:content-type "application/json"
+                                                                                       :reply-to queue-name
+                                                                                       :correlation-id request-correlation-id})
+            (catch Exception e (prn "Couldn't publish message to channel!" (.getMessage e))))
+        ;; Loop to poll the message broker every second looking for response.
+        ;; Didn't want to use subscribe here cause the get function 
+        ;; seemed a lot simpler to wrap my head around and this method works well
+        ;; with the POST handler as it blocks response from being sent back to the client. 
+        response (loop [attempt 0]
+                   (println "Attempt number: " attempt)
+                   (println "Timing out: " (timeout? attempt))
+                   
+                   ;; Establish a 60 second timeout here.
+                   (if-not (timeout? attempt)
+                     
+                     (do 
+                       (Thread/sleep 1000)
+                       (if-let [[{:keys [correlation-id 
+                                         delivery-tag] :as metadata} response] (lb/get channel queue-name false)]
+                         ;; If there's a response check if the correlation-ids match
+                         (do 
+                           (println "Response correlation id: " correlation-id)
+                           (println "Correlation id match: " (= request-correlation-id correlation-id))
+                           
+                           (if (= request-correlation-id correlation-id)
+                             ;; If they do ack the mesage and return the response.
+                             (do
+                               (ack channel delivery-tag)
+                               response)
+                             ;; Otherwise nack the message back onto the queue and recur
+                             
+                             (do
+                               (println "Mismatched Correlation ID" correlation-id)
+                               (nack channel delivery-tag)
+                               (recur (inc attempt)))))
+                         
+                         (recur (inc attempt))))
+                     :no-response))
+
+        _ (println "After publish" response)]
+
+    (if (keyword? response)
+      response
+      (read-bytes->json response))))
+
+
+(defn copy-file 
+  [source dest-path]
+  (io/copy source (io/file dest-path)))
+
+
+(def nii-file-path (or (System/getenv "EFS_FILE_PATH")
+                       "/Users/pmartyn/Documents/College_Work/Thesis/Thesis-Frontend/thesis-frontend/efs/"))
 
 
 (defroutes app-routes
            (GET "/" [] (main-page))
 
-           (POST "/file"
-                 {{{tempfile :tempfile filename :filename} :file} :params}
-
-               ;; Save the temp file upload to disk 
-               (io/copy tempfile (io/file "resources" "public" filename))
-               ;; Publish and get the response data
-               (let [[_metadata response-data] (publish-and-get-response mb/channel filename)
-                     response-data-json (read-bytes->json response-data)]
-                 (prn "Response Data " response-data-json)
+           (POST "/file" []
+              (fn 
+              [request response raise]
+               (println "Request: " request)
+               (println "Thread: " (.getName (Thread/currentThread)))
+               
+               (let [{{{tempfile :tempfile
+                        filename :filename} :file} :params} request
+                     _ (println "Filename: " filename)
+                     
+                     request-correlation-id (uuid)
+                     
+                     _ (try
+                         (copy-file tempfile (str nii-file-path request-correlation-id ".nii"))
+                         (catch Exception e (prn "Failed to save file: " (.getMessage e))))
+                     
+                     resp (delay (send-and-receive-rpc filename request-correlation-id))]
                  
-                 ;; Print the results as a PDF
-                 (if response-data
-                   (pdf/pdf-response response-data-json)
-                   (main-page))))
-            
+                 (let [resp @resp]
+                   (println "Response after async: " resp)
+                 
+                   (if (keyword? resp)
+                     (response (main-page :error))
+                     (response (pdf/pdf-response resp)))))))
+
            (route/resources "/")
            (route/not-found "Not Found"))
 

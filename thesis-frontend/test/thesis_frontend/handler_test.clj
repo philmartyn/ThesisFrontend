@@ -1,9 +1,40 @@
 (ns thesis-frontend.handler-test
   (:require [clojure.test :refer :all]
             [ring.mock.request :as mock]
+            [ring.adapter.jetty :refer [run-jetty]]
+            [clj-http.client :as http]
             [thesis-frontend.handler :refer :all]
-            [byte-streams :as bs]
-            [clojure.java.io :as io]))
+            [langohr.basic :as lb]))
+
+(declare test-port)
+
+(defn with-server
+  [f]
+  (let [server (run-jetty app {:port 1234 :join? false :async? true})
+        port (-> server .getConnectors first .getLocalPort)]
+    (with-redefs [test-port port]
+      (try
+        (f)
+        (finally
+          (.stop server))))))
+          
+
+(def tmp-file
+  (clojure.java.io/file "/Users/pmartyn/Documents/College_Work/Thesis/Thesis-Frontend/thesis-frontend/test/thesis_frontend/test.txt"))
+
+
+(defn url [relative]
+ (str "http://localhost:" test-port relative))
+
+
+(defn mock-post []
+  (http/post (url "/file")
+             {:async? true
+              :multipart [{:name "file" :content (clojure.java.io/file tmp-file)}]}
+             ;; respond callback
+             (fn [response] response)
+             ;; raise callback
+             (fn [exception] (println "exception message is: " (.getMessage exception)))))
 
 (defn str->byte-array
   [^String s]
@@ -11,6 +42,10 @@
     (.getBytes s "ASCII")))
 
 (def main-page-response "<!DOCTYPE html>\n<html><head><title>Bipolar Prediction Service</title></head><link href=\"/css/home-layout.css\" rel=\"stylesheet\" type=\"text/css\"><body><div id=\"text-box\"><h1>Bipolar Prediction Service</h1><h2>Upload NII file</h2><div><form action=\"/file\" enctype=\"multipart/form-data\" method=\"post\"><input id=\"file\" name=\"file\" size=\"20\" type=\"file\"><input id=\"submit\" name=\"submit\" type=\"submit\" value=\"submit\"></form></div></div></body></html>")
+
+(defn get-status
+  [response]
+  (.toString (.getStatusLine (.get response))))
 
 (deftest test-app
   (testing "main page"
@@ -20,27 +55,36 @@
 
   (testing "post"
     (let [response-from-queue (str->byte-array "[{\"filename\" \"1.jpg\" \"class-label\" \"bipolar\" \"class-probability\" \"100.00\"}]")]
+      
       ;; Mock out the queuing section
-      (with-redefs [publish-and-get-response (constantly ["metadata" response-from-queue])
-                    io/file (constantly nil)
-                    io/copy (constantly "")
-                    sleep-thread (constantly 2000)]
+      (with-redefs [lb/publish (constantly nil)
+                    lb/get (constantly [{:correlation-id "12345"} response-from-queue])
+                    ack (constantly true)
+                    uuid (constantly "12345")]
+                    
         (testing "happy path - successful response"
-          (let [response (app (-> (mock/request :post "/file")
-                                  (mock/json-body {:tempfile ""})))]
-            (prn response)
-            (is (= (:status response) 200))
+          (let [response (mock-post)
+                expected-resp-rext (re-pattern "Content-Disposition: filename=data-response.pdf, Content-Type: application/pdf")
+                actual-resp-text (str (.get response))]
+            (println "Response text: " actual-resp-text)
+            (is (= (.toString (.getStatusLine (.get response))) "HTTP/1.1 200 OK"))
             ;; Check the PDF is generated
-            (is (= (subs (with-open [i (io/input-stream (:body response))] 
-                           (bs/convert i String)) 0 5) "%PDF-"))))
+            (is (re-find expected-resp-rext actual-resp-text))))
+                    
   
         (testing "no response"
-          (with-redefs [publish-and-get-response (constantly ["metadata" nil])]
-            (let [response (app (-> (mock/request :post "/file")
-                                    (mock/json-body {:tempfile ""})))]
-              (is (= (:status response) 200))
-              (is (= (:body response) main-page-response))))))))
+          (with-redefs [timeout? (constantly true)]
+            (let [response (mock-post)
+                  expected-resp-str (re-pattern "Content-Type: text/html")
+                  actual-resp-str (str (.get response))]
+              (is (= (get-status response) "HTTP/1.1 200 OK"))
+              (is (re-find expected-resp-str actual-resp-str))))))))
 
   (testing "not-found route"
-    (let [response (app (mock/request :get "/invalid"))]
+    (let [response (app (mock/request :get "/Invalid"))]
       (is (= (:status response) 404)))))
+
+
+
+
+(use-fixtures :once with-server)
