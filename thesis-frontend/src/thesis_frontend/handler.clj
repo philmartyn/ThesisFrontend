@@ -19,7 +19,7 @@
   (write-str {:filename filename}))
 
 
-(defn read-bytes->json
+(defn read-json-bytes
   "Converts a byte array to String to JSON"
   [^bytes response-data] 
   (when response-data 
@@ -62,8 +62,8 @@
        
         _ (try 
             (lb/publish channel "" "clj->py" (to-json-string filename) {:content-type "application/json"
-                                                                                       :reply-to queue-name
-                                                                                       :correlation-id request-correlation-id})
+                                                                        :reply-to queue-name
+                                                                        :correlation-id request-correlation-id})
             (catch Exception e (prn "Couldn't publish message to channel!" (.getMessage e))))
         ;; Loop to poll the message broker every second looking for response.
         ;; Didn't want to use subscribe here cause the get function 
@@ -104,7 +104,7 @@
 
     (if (keyword? response)
       response
-      (read-bytes->json response))))
+      (read-json-bytes response))))
 
 
 (defn copy-file 
